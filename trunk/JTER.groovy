@@ -27,19 +27,19 @@ import org.apache.log4j.Level
 class JTER {
 
     //static String RScriptLocation = "/usr/bin/Rscript"
-	static String RScriptLocation = "C:/Program Files/R/R-2.15.0/bin/Rscript.exe"	
+    //static String girtFolder = "/Users/schaer/Desktop/evaldata/girt"
+    static String RScriptLocation = "C:/Program Files/R/R-2.15.0/bin/Rscript.exe"
+    static String girtFolder = "C:/evaldata/girt"
 
     static main(args) {
-	
-		println args
 
         // read in the console parameters
-        if(!args || args.contains("-help")
-                 || !(args.contains("-treceval")
-                    || args.contains("-kendall")
-                    || args.contains("-powerlaw")
-                    )
-            ){
+        if (!args || args.contains("-help")
+                || !(args.contains("-treceval")
+                || args.contains("-kendall")
+                || args.contains("-powerlaw")
+        )
+        ) {
             println "usage: runJTER [folder] [parameters]"
             println "Please add the following parameters: "
             println "-treceval"
@@ -61,22 +61,22 @@ class JTER {
         def runList = girt.getRunList(qrelsYears, outputDir)
 
         // Start the main program
-        if(args.contains("-treceval")){
+        if (args.contains("-treceval")) {
             log.info "Start writing the TrecEval CSV file to ${outputDir}/results.csv"
             girt.runJavaTrecEval(qrelsYears, runList, outputDir)
             log.info "done"
         }
-        if(args.contains("-kendall")){
+        if (args.contains("-kendall")) {
             log.info "Start writing the R output to ${outputDir}/kendall.csv"
             girt.runRKendall(qrelsYears, runList, outputDir)
-		    log.info "done"
-		}
-        if(args.contains("-powerlaw")){
+            log.info "done"
+        }
+        if (args.contains("-powerlaw")) {
             log.info "Start writing the PowerLaw output to ${outputDir}/powerlaw.csv"
             girt.runRPowerLaw(qrelsYears, runList, outputDir)
             log.info "done"
         }
-	
+
     }
 
     def runRPowerLaw(List years, List runs, File outputDir) {
@@ -109,14 +109,14 @@ class JTER {
             int[] x = xvalues
             def plResult = getPowerLawFit(x)
 
-            if(plResult){
+            if (plResult) {
                 def alpha = plResult.alpha
                 def D = plResult.D
                 def xmin = plResult.xmin
                 csv.append "${key.split("_").getAt(0)};${key.split("_").getAt(1)};"
-				csv.append "${NumberFormat.getInstance().format(alpha)};"
-				csv.append "${NumberFormat.getInstance().format(D)};"
-				csv.append "${NumberFormat.getInstance().format(xmin)};\n"				
+                csv.append "${NumberFormat.getInstance().format(alpha)};"
+                csv.append "${NumberFormat.getInstance().format(D)};"
+                csv.append "${NumberFormat.getInstance().format(xmin)};\n"
             }
         }
 
@@ -124,7 +124,7 @@ class JTER {
 
     def runRKendall(List years, List runs, File outputDir) {
         // init stuff
-        def csv = new File(outputDir,"kendall.csv")
+        def csv = new File(outputDir, "kendall.csv")
         csv.append "topic;run1;run2;size1;size2;overlapAbs;overlapPerc;tau;pvalue\n"
 
         // Fill up the kendalMap and the topics list
@@ -159,7 +159,7 @@ class JTER {
                         def listY = []
                         // It's getting tricky: mapX is the gold standard to which we have to correlate mapY
                         // in case one of the resulting Maps is bigger than the other: swap the both maps
-                        if (sizeY > sizeX){
+                        if (sizeY > sizeX) {
                             def tempMap = mapX; mapX = mapY; mapY = tempMap
                             def tempSize = sizeX; sizeX = sizeY; sizeY = tempSize
 
@@ -168,11 +168,11 @@ class JTER {
                         // to missing documents) with -1 to make R compute the tau value
                         mapX.eachWithIndex {docid, ranking, index ->
                             int alternativeRank = -1            // -1 will be interpreted as NA in RCaller (I hacked RCaller to
-																// to do so... :)
+                            // to do so... :)
                             listX.add(ranking)                  // x-Ranking
                             listY.add(mapY.get(docid, alternativeRank))    // y-Ranking with alterantiveRank if doc is not in mapY
 
-                            if(index<10){
+                            if (index < 10) {
                                 log.debug "ranking for $docid: $ranking and ${mapY[docid]}"
                             }
                         }
@@ -182,13 +182,13 @@ class JTER {
                         int overlapAbs = listX.intersect(listY).size()
                         float overlapPer = 0.0
                         // failed run? beware of div by zero
-                        if(listX.size() > 0 && listX.size()){
+                        if (listX.size() > 0 && listX.size()) {
                             overlapPer = listX.intersect(listY).size().div(listX.size())
                         }
 
                         // print the results and write the csv (casting lists x and y to arrays)
                         // make sure that Kendall can't be computed for very small lists (<3)
-                        if(listX.size() < 3 || listY.size() < 3){
+                        if (listX.size() < 3 || listY.size() < 3) {
                             log.error "Topic $topic [${runs.getAt(i)}|${runs.getAt(j)}] has less than 3 entries - Can't compute Kendall's Tau."
                             //Format: "topic;run1;run2;size1;size2;overlapAbs;overlapPerc;tau;pvalue\n"
                             csv.append "$topic;${runs.getAt(i)};${runs.getAt(j)};${sizeX};${sizeY};"
@@ -197,7 +197,7 @@ class JTER {
                             csv.append "\n"
 
                         }
-                        else{
+                        else {
                             def kendall = getKendallsTau(x, y)
                             float tau = kendall.tau
                             float pval = kendall.pvalue
@@ -233,7 +233,7 @@ class JTER {
         String rScript = this.RScriptLocation
 
         // check if there are at least two unique values - otherwise plfit will panic
-        if(xValues.toList().unique().size() <= 2){
+        if (xValues.toList().unique().size() <= 2) {
             return [alpha: -1, D: -1, xmin: -1]
         }
 
@@ -368,7 +368,6 @@ class JTER {
         // Find out which paths are suitable for libjte.jnilib
         log.trace("System.getProperty: ${System.getProperty('java.library.path')}")
         int topicCounter = qrelsList.size() * topicsPerYear
-        def girtFolder = "."
 
         File csv = new File(outputDir, "results.csv")
         // define the CSV schema
@@ -486,7 +485,7 @@ class JTER {
         queryFiles.each {queryFile ->
             qrelsYears.add(queryFile.toString().replaceAll(/[\w]*-/, "").replace(".txt", ""))
         }
-		qrelsYears.unique()
+        qrelsYears.unique()
         log.info "qrelsYears: ${qrelsYears}"
         return qrelsYears
     }
