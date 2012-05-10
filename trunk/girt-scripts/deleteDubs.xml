@@ -1,0 +1,27 @@
+﻿<delete>
+<!-- Find Dubs with: 
+http://localhost:8983/solr/select/?q=girt:true&facet=true&facet.field=acquisition_id&facet.mincount=2&fl=id,acquisition_id
+-->
+<id>iz-solis-90250216</id>
+<id>iz-solis-90246730</id>
+<id>iz-solis-90127790</id> 
+<id>iz-solis-90125473</id>
+<id>iz-solis-90130902</id> 
+<id>iz-solis-90130903</id>
+<id>iz-solis-90130904</id>
+<id>iz-solis-90130905</id>
+<id>iz-solis-90130906</id>
+<id>iz-solis-90130908</id>
+<id>iz-solis-90149520</id>
+<id>iz-solis-90149521</id>
+<id>iz-solis-90149522</id>
+<id>iz-solis-90149523</id>
+<id>iz-solis-90149524</id>
+<id>iz-solis-90149526</id>
+<id>iz-solis-90230745</id>
+<id>iz-solis-90230346</id>
+<id>iz-solis-90130907</id>
+<id>iz-solis-90149525</id>
+<id>iz-solis-90260802</id>
+<id>iz-solis-90261258</id>
+</delete>

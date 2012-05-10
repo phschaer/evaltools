@@ -1,0 +1,511 @@
+/**
+ * @author <a href="mailto:philipp.schaer@gesis.org">Philipp Schaer</a>
+ * @version 2012-05-10
+ */
+
+/**
+ * To get this doggy rollin' you have to run this script with
+ * a 32-bit Java (run Java with -d32 parameter) and you have
+ * to put the libtje.jnilib into /usr/lib/java or any other
+ * suitable path for java.library.path.
+ *
+ * Can be undone with a new compiled 64bit libjte.jnilib
+ * See the new Makefile for building jte
+ *
+ * TODO: How to include the java.library.path in the class
+ * call to put the libjte.jnilib into a system path like
+ * /usr/lib/java ???*
+ */
+
+import it.unipd.dei.ims.jte.*
+import java.text.NumberFormat
+import rcaller.*
+import groovy.util.logging.*
+import org.apache.log4j.Level
+
+@Log4j //http://marxsoftware.blogspot.de/2011/05/easy-groovy-logger-injection-and-log.html
+class JTER {
+
+    //static String RScriptLocation = "/usr/bin/Rscript"
+	static String RScriptLocation = "C:/Program Files/R/R-2.15.0/bin/Rscript.exe"	
+
+    static main(args) {
+	
+		println args
+
+        // read in the console parameters
+        if(!args || args.contains("-help")
+                 || !(args.contains("-treceval")
+                    || args.contains("-kendall")
+                    || args.contains("-powerlaw")
+                    )
+            ){
+            println "usage: runJTER [folder] [parameters]"
+            println "Please add the following parameters: "
+            println "-treceval"
+            println "-kendall"
+            println "-powerlaw"
+            println "-debug"
+            return
+        }
+
+        // setup the main logger
+        args.contains("-debug") ? log.setLevel(Level.DEBUG) : log.setLevel(Level.INFO)
+
+        // init some stuff
+        log.debug("RScriptLocation: $RScriptLocation")
+        log.debug("Arguments: $args")
+        def girt = new JTER()
+        File outputDir = new File(args.getAt(0)) ?: new File(".")
+        def qrelsYears = girt.getQrelsYears(outputDir)
+        def runList = girt.getRunList(qrelsYears, outputDir)
+
+        // Start the main program
+        if(args.contains("-treceval")){
+            log.info "Start writing the TrecEval CSV file to ${outputDir}/results.csv"
+            girt.runJavaTrecEval(qrelsYears, runList, outputDir)
+            log.info "done"
+        }
+        if(args.contains("-kendall")){
+            log.info "Start writing the R output to ${outputDir}/kendall.csv"
+            girt.runRKendall(qrelsYears, runList, outputDir)
+		    log.info "done"
+		}
+        if(args.contains("-powerlaw")){
+            log.info "Start writing the PowerLaw output to ${outputDir}/powerlaw.csv"
+            girt.runRPowerLaw(qrelsYears, runList, outputDir)
+            log.info "done"
+        }
+	
+    }
+
+    def runRPowerLaw(List years, List runs, File outputDir) {
+        // init stuff
+        def csv = new File(outputDir, "powerlaw.csv")
+        csv.append "topic;run;alpha;D;xmin\n"
+
+        //Iterate over the facet files and fill the facetMap
+        def facetMap = [:]
+        try {
+            years.each {year ->
+                runs.each {run ->
+                    def facetFile = new File(outputDir, "facets-${run}-${year}.txt")
+                    facetFile.splitEachLine(";") {topic, name, code, count ->
+                        List<Integer> tempList = facetMap[("${topic}_${run}")] ?: []
+                        tempList.add(count.toInteger())
+                        facetMap[("${topic}_${run}")] = tempList // List in Map
+                    }
+                }
+            }
+        }
+        catch (FileNotFoundException e) {
+            log.error "No corresponging facet file found: ${e}"
+        }
+
+        log.debug facetMap
+
+        facetMap.eachWithIndex {key, val, index ->
+            List xvalues = val
+            int[] x = xvalues
+            def plResult = getPowerLawFit(x)
+
+            if(plResult){
+                def alpha = plResult.alpha
+                def D = plResult.D
+                def xmin = plResult.xmin
+                csv.append "${key.split("_").getAt(0)};${key.split("_").getAt(1)};"
+				csv.append "${NumberFormat.getInstance().format(alpha)};"
+				csv.append "${NumberFormat.getInstance().format(D)};"
+				csv.append "${NumberFormat.getInstance().format(xmin)};\n"				
+            }
+        }
+
+    }
+
+    def runRKendall(List years, List runs, File outputDir) {
+        // init stuff
+        def csv = new File(outputDir,"kendall.csv")
+        csv.append "topic;run1;run2;size1;size2;overlapAbs;overlapPerc;tau;pvalue\n"
+
+        // Fill up the kendalMap and the topics list
+        def kendallMap = [:]
+        def topics = [] as Set // unique topic numbers
+        years.each {year ->
+            runs.each {run ->
+                // extract all documents and their ranking per run and year
+                def trecTopFile = new File(outputDir, "trec_top_file-${run}-${year}.txt")
+                trecTopFile.splitEachLine(" ") {topic, runNum, docid, ranking, score, runType ->
+                    def tempMap = kendallMap[("${topic}_${runType}")] ?: [:]
+                    topics.add(topic)
+                    tempMap[(docid)] = ranking.toInteger() + 1    // Rank 0 is Rank 1... R wants it this way
+                    kendallMap[("${topic}_${runType}")] = tempMap // Map in Map
+                }
+            }
+        }
+        log.debug "topics: $topics"
+        log.trace "kendallMap: $kendallMap"
+
+        def computedKendallRuns = []
+        runs.eachWithIndex {runx, i ->
+            runs.eachWithIndex {runy, j ->
+                // since we want to iterate over all runs and compare each with each other, we have to check this here
+                if (!(computedKendallRuns.contains("${runx}${runy}") || computedKendallRuns.contains("${runy}${runx}")) && runx != runy) {
+                    topics.each {topic ->
+                        def mapX = kendallMap[("${topic}_${runs.getAt(i)}")] ?: [:]
+                        def mapY = kendallMap[("${topic}_${runs.getAt(j)}")] ?: [:]
+                        int sizeX = mapX.size() ?: 0
+                        int sizeY = mapY.size() ?: 0
+                        def listX = []
+                        def listY = []
+                        // It's getting tricky: mapX is the gold standard to which we have to correlate mapY
+                        // in case one of the resulting Maps is bigger than the other: swap the both maps
+                        if (sizeY > sizeX){
+                            def tempMap = mapX; mapX = mapY; mapY = tempMap
+                            def tempSize = sizeX; sizeX = sizeY; sizeY = tempSize
+
+                        }
+                        // then we have to fill up all not corresponding rankings (due to different result set sizes or
+                        // to missing documents) with -1 to make R compute the tau value
+                        mapX.eachWithIndex {docid, ranking, index ->
+                            int alternativeRank = -1            // -1 will be interpreted as NA in RCaller (I hacked RCaller to
+																// to do so... :)
+                            listX.add(ranking)                  // x-Ranking
+                            listY.add(mapY.get(docid, alternativeRank))    // y-Ranking with alterantiveRank if doc is not in mapY
+
+                            if(index<10){
+                                log.debug "ranking for $docid: $ranking and ${mapY[docid]}"
+                            }
+                        }
+
+                        int[] x = listX // cast to int array
+                        int[] y = listY
+                        int overlapAbs = listX.intersect(listY).size()
+                        float overlapPer = 0.0
+                        // failed run? beware of div by zero
+                        if(listX.size() > 0 && listX.size()){
+                            overlapPer = listX.intersect(listY).size().div(listX.size())
+                        }
+
+                        // print the results and write the csv (casting lists x and y to arrays)
+                        // make sure that Kendall can't be computed for very small lists (<3)
+                        if(listX.size() < 3 || listY.size() < 3){
+                            log.error "Topic $topic [${runs.getAt(i)}|${runs.getAt(j)}] has less than 3 entries - Can't compute Kendall's Tau."
+                            //Format: "topic;run1;run2;size1;size2;overlapAbs;overlapPerc;tau;pvalue\n"
+                            csv.append "$topic;${runs.getAt(i)};${runs.getAt(j)};${sizeX};${sizeY};"
+                            csv.append "${overlapAbs};"
+                            csv.append "${NumberFormat.getInstance().format(overlapPer)};;" // no kendall tau and pval
+                            csv.append "\n"
+
+                        }
+                        else{
+                            def kendall = getKendallsTau(x, y)
+                            float tau = kendall.tau
+                            float pval = kendall.pvalue
+                            log.debug "Topic $topic [${runs.getAt(i)}|${runs.getAt(j)}] got a Kendall's Tau of ${tau} with a p-value of ${pval}"
+                            log.debug "Topic $topic [${runs.getAt(i)}|${runs.getAt(j)}] got an overlap count of ${overlapAbs}/${listX.size()} which equals $overlapPer"
+
+                            //Format: "topic;run1;run2;size1;size2;overlapAbs;overlapPerc;tau;pvalue\n"
+                            csv.append "$topic;${runs.getAt(i)};${runs.getAt(j)};${sizeX};${sizeY};"
+                            csv.append "${overlapAbs};"
+                            csv.append "${NumberFormat.getInstance().format(overlapPer)};"
+                            csv.append "${NumberFormat.getInstance().format(tau)};"
+                            csv.append "${NumberFormat.getInstance().format(pval)}"
+                            csv.append "\n"
+
+                        }
+                        log.trace "listX (size of ${listX.size()}): $listX"
+                        log.trace "ListY (size of ${listY.size()}): $listY"
+
+                    }
+                    computedKendallRuns.add("${runx}${runy}")    // this combination is computed and doen's have to be computed again
+                    computedKendallRuns.add("${runy}${runx}")
+                }
+
+            }
+
+        }
+
+    }
+
+    def getPowerLawFit(int[] xValues) {
+
+        // Get the location to the RScript file
+        String rScript = this.RScriptLocation
+
+        // check if there are at least two unique values - otherwise plfit will panic
+        if(xValues.toList().unique().size() <= 2){
+            return [alpha: -1, D: -1, xmin: -1]
+        }
+
+        try {
+            //Creating an instance of class RCaller
+            RCaller caller = new RCaller()
+            caller.setRscriptExecutable(rScript)
+
+            //Create a new RCode container
+            RCode code = new RCode()
+
+            //Include plfit.r from the resources folder
+            def plfitFile = new File("lib/plfit.r")
+            String plfitScript = plfitFile.getAbsolutePath().replace("${File.separator}", "/").toString()
+            log.debug "plfitScript Location: $plfitScript"
+
+            // Read in the PowerLawFit R-Script
+            code.R_source(plfitScript)
+
+            // Read in the xValues and calculate the Power Law exponent
+            code.addIntArray("xValues", xValues)
+
+            // When the input sample size is small (e.g., < 50), the estimator is
+            // known to be slightly biased (toward larger values of alpha). To
+            // explicitly use an experimental finite-size correction, call PLFIT with finit=TRUE
+            if (xValues.size() <= 50) {
+                code.addRCode("temp <- plfit(xValues,finite=TRUE)")
+            }
+            else {
+                code.addRCode("temp <- plfit(xValues)")
+            }
+
+            code.addRCode("output <- list(alpha=c(temp\$alpha), D=c(temp\$D), xmin=c(temp\$xmin))")
+
+            caller.setRCode(code)
+            caller.runAndReturnResult("output")
+
+            // We are printing the content of our RCode and generated XML
+            log.trace "getRCode():"
+            log.trace "****************************"
+            log.trace caller.getRCode()
+            log.trace "****************************"
+            log.trace "getXMLFileAsString():"
+            log.trace caller.getParser().getXMLFileAsString()
+            log.trace "****************************"
+            log.trace "getNames(): ${caller.getParser().getNames()}"
+
+            // Get the alpha value out of the generated XML
+            double alpha = caller.getParser().getAsDoubleArray("alpha").toList().get(0)
+            double D = caller.getParser().getAsDoubleArray("D").toList().get(0)
+            double xmin = caller.getParser().getAsDoubleArray("xmin").toList().get(0)
+            log.debug "xValues: ${xValues}"
+            log.debug "alpha: ${alpha}, D: ${D}, xmin: ${xmin}"
+
+            return [alpha: alpha, D: D, xmin: xmin]
+
+        }
+
+        catch (RCallerParseException) {
+            log.error RCallerParseException
+        }
+        catch (Exception) {
+            log.error Exception
+        }
+        finally {
+            log.debug "Finished the plfit method"
+        }
+    }
+
+    /**
+     * Compute the Kendall's tau and corresponding pValues for two given arrays of Integers
+     * which represent two different rankings from two systems.
+     *
+     * @return tau , pvalue
+     * @param x , y - two arrays of Integers with ranking positions of two different systems
+     */
+    def getKendallsTau(int[] x, int[] y) {
+
+        // Get the location to the RScript file
+        String rScript = this.RScriptLocation
+
+        try {
+            //Creating an instance of class RCaller
+            RCaller caller = new RCaller()
+            caller.setRscriptExecutable(rScript);
+
+            //Create a new RCode container
+            RCode code = new RCode()
+
+            //Include dependency information
+            code.R_require("Kendall")
+
+            //Generating x and y vectors from
+            code.addIntArray("x", x)
+            code.addIntArray("y", y)
+
+            // awkward way to bring the Kendall output into a parseable form
+            // we have to extract each single value and put it into a new list
+            code.addRCode("temp <- Kendall(x,y)")
+            code.addRCode("output <- list(tau=c(temp\$tau),pvalue=c(temp\$sl))")
+
+            //We are running the R code but we want code to send some result to us (java)
+            //We want to handle the ols object generated in R side
+            caller.setRCode(code);
+            caller.runAndReturnResult("output")
+
+            //We are printing the content of ols
+            log.trace "****************************"
+            log.trace caller.getRCode()
+            log.trace caller.getParser().getXMLFileAsString()
+            log.trace "****************************"
+
+            caller.getParser().getNames().each {name ->
+                log.trace "${name}: ${caller.getParser().getAsDoubleArray(name).toList().get(0)}"
+            }
+
+            double tau = caller.getParser().getAsDoubleArray("tau").toList().get(0)
+            double pvalue = caller.getParser().getAsDoubleArray("pvalue").toList().get(0)
+
+            return [tau: tau, pvalue: pvalue]
+
+        }
+        catch (RCallerParseException) {
+            log.error RCallerParseException
+        }
+        catch (Exception) {
+            log.error Exception
+        }
+    }
+
+    def runJavaTrecEval(ArrayList qrelsList, ArrayList runList, File outputDir, int topicsPerYear = 25) {
+        // Find out which paths are suitable for libjte.jnilib
+        log.trace("System.getProperty: ${System.getProperty('java.library.path')}")
+        int topicCounter = qrelsList.size() * topicsPerYear
+        def girtFolder = "."
+
+        File csv = new File(outputDir, "results.csv")
+        // define the CSV schema
+        def headingList = ["topic",                // topic code
+                "run",
+                "relevant",             // absolute number of relevant docs
+                "relevantRetrieved",    // how many correct docs did we find?
+                "retrieved",            // how many docs did we find at all?
+                "recall",
+                "avgPrecision",         // MAP
+                "rPrecision",           // r-Precision
+                "p@5",                  // P@n
+                "p@10",
+                "p@15",
+                "p@20",
+                "p@30",
+                "p@100",
+                "p@200",
+                "p@500",
+                "p@1000"]
+        // build CSV heading from headingList
+        headingList.eachWithIndex { heading, index ->
+            (index < headingList.size() - 1) ? csv.append("${heading};") : csv.append("${heading}\n")
+        }
+        // build the NULL-line
+        String nullLine = ""
+        headingList.eachWithIndex { heading, index ->
+            if (index == 0) {nullLine += "failedTopic;"}
+            else if (index == 1) {nullLine += "failedRun;"}
+            else {(index < headingList.size() - 1) ? (nullLine += "0;") : (nullLine += "0\n")}
+        }
+
+        runList.each {runName ->
+            qrelsList.each {year ->
+                String qrels = "${girtFolder}/qrels/qrels_ds_DE_${year}.txt"
+                String run = "${outputDir}/trec_top_file-${runName}-${year}.txt"
+                int nextQuery = -1;
+
+                try {
+                    List<Metric> metrics = JTEFactory.createTrecEval(qrels, run).compute();
+
+                    metrics.eachWithIndex {Metric m, int i ->
+                        // JTE doesn't correctly compute OVERALL - therefore we have to skip it
+                        if (!m.query.equals("OVERALL")) {
+                            // Init nextQuery (only during the first iteration)
+                            // Remember to get rid of the DOI prefix for the year 2007 and 2008 (10.2452/)
+                            int tempQueryNum = m.query.replace("10.2452/", "").replace("-DS", "").toInteger()
+                            if (i == 0) {
+                                nextQuery = tempQueryNum - tempQueryNum % topicsPerYear + 1
+                            }
+                            // Fill up empty results with the precomputed nullLine.
+                            // In the case that there is more then one empty topic following, we
+                            // iterate until the next valid topic is reached.
+                            while (tempQueryNum != nextQuery) {
+                                csv.append(nullLine)
+                                nextQuery++;
+                            }
+                            // Print all the TrevEval standard measures
+                            // Using NumberFormat instead of it.toString() because of locale sentivity of NumberFormat,
+                            // so it is correctly converted to 1,0 instead of 1.0!
+                            StandardMetric sm = JTEFactory.createStandardMetric(m)
+                            csv.append "${m.query};${runName};"
+                            csv.append "${sm.getRelevant()};"
+                            csv.append "${sm.getRelevantRetrieved()};"
+                            csv.append "${sm.getRetrieved()};"
+                            csv.append "${NumberFormat.getInstance().format(sm.getRelevantRetrieved() / sm.getRelevant())};"
+                            csv.append "${NumberFormat.getInstance().format(sm.getAvgPrec())};"
+                            csv.append "${NumberFormat.getInstance().format(sm.getRPrec())};"
+                            sm.cutOffPrecisions.each {csv.append "${NumberFormat.getInstance().format(it);};"}
+                            csv.append "\n"
+                            nextQuery++;
+                            // Print a human readable output (comparable to the original TrecEval)
+                            log.trace(sm.toString(Locale.GERMANY))
+                        }
+                    }
+                }
+                catch (Exception e) {
+                    log.error "Error in $run - $nextQuery"
+                    log.error e
+                }
+
+                // Fill up empty results with the precomputed nullLine.
+                while (nextQuery % topicsPerYear != 1) {
+                    csv.append(nullLine)
+                    nextQuery++;
+                }
+            }
+        }
+        // Add stats
+        def stats = ["run", "recall", "avgPrecision", "rPrecison", "p@5", "p@10", "p@15", "p@20", "p@30", "p@100", "p@200"]
+        // build CSV heading from headingList
+        csv.append "\n\n"
+        stats.eachWithIndex { stat, index ->
+            (index < stats.size() - 1) ? csv.append("${stat};") : csv.append("${stat}\n")
+        }
+        int startRow = 2
+        int endRow = startRow + topicCounter - 1
+        def rows = ["F", "G", "H", "I", "J", "K", "L", "M", "N", "O"]
+        for (int x = 0; x < runList.size(); x++) {
+            startRow = 2 + x * topicCounter
+            endRow = startRow + topicCounter - 1
+            csv.append "=B${startRow};"
+            rows.each { row ->
+                csv.append "=MITTELWERT(${row}${startRow}:${row}${endRow});"
+            }
+            csv.append "\n"
+        }
+
+    }
+
+    def getQrelsYears(File outputDir) {
+        // extract the years from the queryLog files
+        def queryFiles = outputDir.list([accept: {d, f -> f ==~ /.*?queryLog.*/ }] as FilenameFilter).toList()
+        def qrelsYears = []
+        queryFiles.each {queryFile ->
+            qrelsYears.add(queryFile.toString().replaceAll(/[\w]*-/, "").replace(".txt", ""))
+        }
+		qrelsYears.unique()
+        log.info "qrelsYears: ${qrelsYears}"
+        return qrelsYears
+    }
+
+    def getRunList(List qrelsYears, File outputDir) {
+        // extract the tasks from the trec_top files
+        def topFiles = outputDir.list([accept: {d, f -> f ==~ /.*?trec_top.*/ }] as FilenameFilter).toList()
+        def runList = []
+        topFiles.each {topFile ->
+            def temp = topFile.toString().replace("trec_top_file-", "")
+            qrelsYears.each {year ->
+                temp = temp.replace("-${year}.txt", "")
+            }
+            runList.add(temp)
+        }
+        runList = runList.unique()
+        log.info "runList: $runList"
+        return runList
+    }
+
+
+}
