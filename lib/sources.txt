@@ -1,0 +1,4 @@
+http://tuvalu.santafe.edu/~aaronc/powerlaws/
+
+Tutorial how to use this stuff
+http://intersci.ss.uci.edu/wiki/index.php/Power-law_distributions
