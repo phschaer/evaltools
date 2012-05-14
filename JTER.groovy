@@ -30,6 +30,8 @@ class JTER {
     //static String girtFolder = "/Users/schaer/Desktop/evaldata/girt"
     static String RScriptLocation = "C:/Program Files/R/R-2.15.0/bin/Rscript.exe"
     static String girtFolder = "C:/evaldata/girt"
+    static String isearchFolder = "C:/evaldata/isearch-v1.0"
+    static String outputRoot = "C:/evaldata/results"
 
     static main(args) {
 
@@ -46,6 +48,7 @@ class JTER {
             println "-kendall"
             println "-powerlaw"
             println "-debug"
+            println "-corpus=girt|isearch"
             return
         }
 
@@ -62,9 +65,16 @@ class JTER {
 
         // Start the main program
         if (args.contains("-treceval")) {
-            log.info "Start writing the TrecEval CSV file to ${outputDir}/results.csv"
-            girt.runJavaTrecEval(qrelsYears, runList, outputDir)
-            log.info "done"
+            if (args.contains("-corpus=girt")){
+                log.info "Start writing the TrecEval CSV file to ${outputDir}/results.csv"
+                girt.runJavaTrecEvalGirt(qrelsYears, runList, outputDir)
+                log.info "done"
+            }
+            if (args.contains("-corpus=isearch")){
+                log.info "Start writing the TrecEval CSV file to ${outputDir}/results.csv"
+                girt.runJavaTrecEvaliSearch(runList, outputDir)
+                log.info "done"
+            }
         }
         if (args.contains("-kendall")) {
             log.info "Start writing the R output to ${outputDir}/kendall.csv"
@@ -364,7 +374,122 @@ class JTER {
         }
     }
 
-    def runJavaTrecEval(ArrayList qrelsList, ArrayList runList, File outputDir, int topicsPerYear = 25) {
+    def runJavaTrecEvaliSearch(ArrayList runList, File outputDir) {
+        // Find out which paths are suitable for libjte.jnilib
+        log.trace("System.getProperty: ${System.getProperty('java.library.path')}")
+
+        int topicCounter = 66
+
+        File csv = new File(outputDir, "results.csv")
+        // define the CSV schema
+        def headingList = ["topic",                // topic code
+                "run",
+                "relevant",             // absolute number of relevant docs
+                "relevantRetrieved",    // how many correct docs did we find?
+                "retrieved",            // how many docs did we find at all?
+                "recall",
+                "avgPrecision",         // MAP
+                "rPrecision",           // r-Precision
+                "p@5",                  // P@n
+                "p@10",
+                "p@15",
+                "p@20",
+                "p@30",
+                "p@100",
+                "p@200",
+                "p@500",
+                "p@1000"]
+        // build CSV heading from headingList
+        headingList.eachWithIndex { heading, index ->
+            (index < headingList.size() - 1) ? csv.append("${heading};") : csv.append("${heading}\n")
+        }
+        // build the NULL-line
+        String nullLine = ""
+        headingList.eachWithIndex { heading, index ->
+            if (index == 0) {nullLine += "failedTopic;"}
+            else if (index == 1) {nullLine += "failedRun;"}
+            else {(index < headingList.size() - 1) ? (nullLine += "0;") : (nullLine += "0\n")}
+        }
+
+        runList.each {runName ->
+            runName = runName.replace(".txt","") // to surpass bug in getRunList
+            String qrels = "${isearchFolder}/assessments/graded-qrels.all-types.txt"
+            String run = "${outputDir}/trec_top_file-${runName}.txt"
+            int nextQuery = -1;
+
+            try {
+                List<Metric> metrics = JTEFactory.createTrecEval(qrels, run).compute();
+
+                metrics.eachWithIndex {Metric m, int i ->
+                    // JTE doesn't correctly compute OVERALL - therefore we have to skip it
+                    if (!m.query.equals("OVERALL")) {
+                        // Init nextQuery (only during the first iteration)
+                        // Remember to get rid of the DOI prefix for the year 2007 and 2008 (10.2452/)
+                        int tempQueryNum = m.query.toInteger()
+                        if (i == 0) {
+                            nextQuery = tempQueryNum - tempQueryNum  + 1
+                        }
+                        // Fill up empty results with the precomputed nullLine.
+                        // In the case that there is more then one empty topic following, we
+                        // iterate until the next valid topic is reached.
+                        while (tempQueryNum != nextQuery) {
+                            csv.append(nullLine)
+                            nextQuery++;
+                        }
+                        // Print all the TrevEval standard measures
+                        // Using NumberFormat instead of it.toString() because of locale sentivity of NumberFormat,
+                        // so it is correctly converted to 1,0 instead of 1.0!
+                        StandardMetric sm = JTEFactory.createStandardMetric(m)
+                        csv.append "${m.query};${runName};"
+                        csv.append "${sm.getRelevant()};"
+                        csv.append "${sm.getRelevantRetrieved()};"
+                        csv.append "${sm.getRetrieved()};"
+                        csv.append "${NumberFormat.getInstance().format(sm.getRelevantRetrieved() / sm.getRelevant())};"
+                        csv.append "${NumberFormat.getInstance().format(sm.getAvgPrec())};"
+                        csv.append "${NumberFormat.getInstance().format(sm.getRPrec())};"
+                        sm.cutOffPrecisions.each {csv.append "${NumberFormat.getInstance().format(it);};"}
+                        csv.append "\n"
+                        nextQuery++;
+                        // Print a human readable output (comparable to the original TrecEval)
+                        log.trace(sm.toString(Locale.GERMANY))
+                    }
+                }
+            }
+            catch (Exception e) {
+                log.error "Error in $run - $nextQuery"
+                log.error e
+            }
+
+            // Fill up empty results with the precomputed nullLine.
+            //while (nextQuery % topicsPerYear != 1) {
+            //    csv.append(nullLine)
+            //    nextQuery++;
+            //}
+        }
+
+        // Add stats
+        def stats = ["run", "recall", "avgPrecision", "rPrecison", "p@5", "p@10", "p@15", "p@20", "p@30", "p@100", "p@200"]
+        // build CSV heading from headingList
+        csv.append "\n\n"
+        stats.eachWithIndex { stat, index ->
+            (index < stats.size() - 1) ? csv.append("${stat};") : csv.append("${stat}\n")
+        }
+        int startRow = 2
+        int endRow = startRow + topicCounter - 1
+        def rows = ["F", "G", "H", "I", "J", "K", "L", "M", "N", "O"]
+        for (int x = 0; x < runList.size(); x++) {
+            startRow = 2 + x * topicCounter
+            endRow = startRow + topicCounter - 1
+            csv.append "=B${startRow};"
+            rows.each { row ->
+                csv.append "=MITTELWERT(${row}${startRow}:${row}${endRow});"
+            }
+            csv.append "\n"
+        }
+
+    }
+
+    def runJavaTrecEvalGirt(ArrayList qrelsList, ArrayList runList, File outputDir, int topicsPerYear = 25) {
         // Find out which paths are suitable for libjte.jnilib
         log.trace("System.getProperty: ${System.getProperty('java.library.path')}")
         int topicCounter = qrelsList.size() * topicsPerYear
