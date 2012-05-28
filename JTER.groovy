@@ -35,53 +35,67 @@ class JTER {
 
     static main(args) {
 
-        // read in the console parameters
-        if (!args || args.contains("-help")
-                || !(args.contains("-treceval")
-                || args.contains("-kendall")
-                || args.contains("-powerlaw")
-        )
-        ) {
-            println "usage: runJTER [folder] [parameters]"
-            println "Please add the following parameters: "
-            println "-treceval"
-            println "-kendall"
-            println "-powerlaw"
-            println "-debug"
-            println "-corpus=girt|isearch"
-            return
-        }
+		def cli = new CliBuilder(usage: 'JTER.groovy -[htkpdc] folder')
+		cli.with {
+			h longOpt: 'help', 'Show usage information'
+			t longOpt: 'treceval', 'Run typical trec_eval analysis'
+			k longOpt: 'kendall', 'Run Kendalls tau analysis'
+			p longOpt: 'powerlaw', 'Run PowerLaw analysis'
+			i longOpt: 'isearch', 'Use the iSearch corpus'
+			g longOpt: 'girt', 'Use the GIRT corpus'
+            d longOpt: 'debug', 'Print debug messages'
+		}
+		
+		// init the command line options
+        def options = cli.parse(args)
+		if (!options || options.h) {
+			cli.usage()
+			return
+		}
 
         // setup the main logger
-        args.contains("-debug") ? log.setLevel(Level.DEBUG) : log.setLevel(Level.INFO)
+        options.d ? log.setLevel(Level.DEBUG) : log.setLevel(Level.INFO)
 
         // init some stuff
+        log.debug "java.library.path: ${System.properties['java.library.path']}"
         log.debug("RScriptLocation: $RScriptLocation")
         log.debug("Arguments: $args")
         def girt = new JTER()
-        File outputDir = new File(args.getAt(0)) ?: new File(".")
+        File outputDir = new File(".")
+
+        def extraArguments = options.arguments()
+        if (extraArguments) {
+            if (extraArguments.size() == 1) {
+                outputDir = new File(extraArguments[0])
+            }
+            else {
+                cli.usage()
+                return
+            }
+        }
+
         def qrelsYears = girt.getQrelsYears(outputDir)
         def runList = girt.getRunList(qrelsYears, outputDir)
 
         // Start the main program
-        if (args.contains("-treceval")) {
-            if (args.contains("-corpus=girt")){
+        if (options.t) {
+            if (options.g){
                 log.info "Start writing the TrecEval CSV file to ${outputDir}/results.csv"
                 girt.runJavaTrecEvalGirt(qrelsYears, runList, outputDir)
                 log.info "done"
             }
-            if (args.contains("-corpus=isearch")){
+            if (options.i){
                 log.info "Start writing the TrecEval CSV file to ${outputDir}/results.csv"
                 girt.runJavaTrecEvaliSearch(runList, outputDir)
                 log.info "done"
             }
         }
-        if (args.contains("-kendall")) {
+        if (options.k) {
             log.info "Start writing the R output to ${outputDir}/kendall.csv"
             girt.runRKendall(qrelsYears, runList, outputDir)
             log.info "done"
         }
-        if (args.contains("-powerlaw")) {
+        if (options.p) {
             log.info "Start writing the PowerLaw output to ${outputDir}/powerlaw.csv"
             girt.runRPowerLaw(qrelsYears, runList, outputDir)
             log.info "done"
