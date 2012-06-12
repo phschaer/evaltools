@@ -48,7 +48,7 @@ class JTER {
 		
 		// init the command line options
         def options = cli.parse(args)
-		if (!options || options.h) {
+		if (!options.arguments() || options.h) {
 			cli.usage()
 			return
 		}
@@ -157,6 +157,9 @@ class JTER {
         years.each {year ->
             runs.each {run ->
                 // extract all documents and their ranking per run and year
+                // Watch out: we have to lowercase all run names because of
+                // a possible mismatch between the filenames and the naming
+                // of the runs in the top_files.
                 def trecTopFile = new File(outputDir, "trec_top_file-${run}-${year}.txt")
                 trecTopFile.splitEachLine(" ") {topic, runNum, docid, ranking, score, runType ->
                     def tempMap = kendallMap[("${topic}_${runType}")] ?: [:]
@@ -167,14 +170,14 @@ class JTER {
             }
         }
         log.debug "topics: $topics"
-        log.trace "kendallMap: $kendallMap"
+        log.debug "kendallMap: $kendallMap"
 
         def computedKendallRuns = []
-        runs.eachWithIndex {runx, i ->
-            runs.eachWithIndex {runy, j ->
+        runs.eachWithIndex {String runx, int i ->
+            runs.eachWithIndex {String runy, int j ->
                 // since we want to iterate over all runs and compare each with each other, we have to check this here
                 if (!(computedKendallRuns.contains("${runx}${runy}") || computedKendallRuns.contains("${runy}${runx}")) && runx != runy) {
-                    topics.each {topic ->
+                    topics.each {String topic ->
                         def mapX = kendallMap[("${topic}_${runs.getAt(i)}")] ?: [:]
                         def mapY = kendallMap[("${topic}_${runs.getAt(j)}")] ?: [:]
                         int sizeX = mapX.size() ?: 0
@@ -190,7 +193,7 @@ class JTER {
                         }
                         // then we have to fill up all not corresponding rankings (due to different result set sizes or
                         // to missing documents) with -1 to make R compute the tau value
-                        mapX.eachWithIndex {docid, ranking, index ->
+                        mapX.eachWithIndex {String docid, int ranking, int index ->
                             int alternativeRank = -1            // -1 will be interpreted as NA in RCaller (I hacked RCaller to
                             // to do so... :)
                             listX.add(ranking)                  // x-Ranking
