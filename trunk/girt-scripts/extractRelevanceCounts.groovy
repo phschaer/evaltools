@@ -1,9 +1,9 @@
 def startTime = System.currentTimeMillis()
 
 // Put path to GIRT qrels files here
-def qrels = "C:\\evaldata\\girt\\qrels"
+def qrels = "D:\\evaldata\\girt\\qrels"
 def fileList = new File(qrels).list().toList()
-def output = new File("C:\\evaldata\\results\\GIRT-relevance.txt")
+def output = new File("D:\\evaldata\\results\\GIRT-relevance.txt")
 
 int totalRelevanceCounter = 0
 def relevanceMap = [:]
