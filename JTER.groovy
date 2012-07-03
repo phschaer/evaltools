@@ -29,9 +29,10 @@ class JTER {
     //static String RScriptLocation = "/usr/bin/Rscript"
     //static String girtFolder = "/Users/schaer/Desktop/evaldata/girt"
     static String RScriptLocation = "C:/Program Files/R/R-2.15.0/bin/Rscript.exe"
-    static String girtFolder = "C:/evaldata/girt"
-    static String isearchFolder = "C:/evaldata/isearch-v1.0"
-    static String outputRoot = "C:/evaldata/results"
+    static String girtFolder = "D:/evaldata/girt"
+    static String isearchFolder = "D:/evaldata/isearch-v1.0"
+    static String outputRoot = "D:/evaldata/results"
+    static String date = new Date().format('yyyy-MM-dd_HHmmss').toString()
 
     static main(args) {
 
@@ -76,27 +77,27 @@ class JTER {
 
         def qrelsYears = girt.getQrelsYears(outputDir)
         def runList = girt.getRunList(qrelsYears, outputDir)
-
+		
         // Start the main program
         if (options.t) {
             if (options.g){
-                log.info "Start writing the TrecEval CSV file to ${outputDir}/results.csv"
+                log.info "Start writing the TrecEval CSV file to ${outputDir}/results-${date}.csv"
                 girt.runJavaTrecEvalGirt(qrelsYears, runList, outputDir)
                 log.info "done"
             }
             if (options.i){
-                log.info "Start writing the TrecEval CSV file to ${outputDir}/results.csv"
+                log.info "Start writing the TrecEval CSV file to ${outputDir}/results-${date}.csv"
                 girt.runJavaTrecEvaliSearch(runList, outputDir)
                 log.info "done"
             }
         }
         if (options.k) {
-            log.info "Start writing the R output to ${outputDir}/kendall.csv"
+            log.info "Start writing the R output to ${outputDir}/kendall-${date}.csv"
             girt.runRKendall(qrelsYears, runList, outputDir)
             log.info "done"
         }
         if (options.p) {
-            log.info "Start writing the PowerLaw output to ${outputDir}/powerlaw.csv"
+            log.info "Start writing the PowerLaw output to ${outputDir}/powerlaw-${date}.csv"
             girt.runRPowerLaw(qrelsYears, runList, outputDir)
             log.info "done"
         }
@@ -105,7 +106,7 @@ class JTER {
 
     def runRPowerLaw(List years, List runs, File outputDir) {
         // init stuff
-        def csv = new File(outputDir, "powerlaw.csv")
+        def csv = new File(outputDir, "powerlaw-${date}.csv")
         csv.append "topic;run;alpha;D;xmin\n"
 
         //Iterate over the facet files and fill the facetMap
@@ -148,7 +149,7 @@ class JTER {
 
     def runRKendall(List years, List runs, File outputDir) {
         // init stuff
-        def csv = new File(outputDir, "kendall.csv")
+        def csv = new File(outputDir, "kendall-${date}.csv")
         csv.append "topic;run1;run2;size1;size2;overlapAbs;overlapPerc;tau;pvalue\n"
 
         // Fill up the kendalMap and the topics list
@@ -397,7 +398,7 @@ class JTER {
 
         int topicCounter = 66
 
-        File csv = new File(outputDir, "results.csv")
+        File csv = new File(outputDir, "results-${date}.csv")
         // define the CSV schema
         def headingList = ["topic",                // topic code
                 "run",
@@ -511,7 +512,7 @@ class JTER {
         log.trace("System.getProperty: ${System.getProperty('java.library.path')}")
         int topicCounter = qrelsList.size() * topicsPerYear
 
-        File csv = new File(outputDir, "results.csv")
+        File csv = new File(outputDir, "results-${date}.csv")
         // define the CSV schema
         def headingList = ["topic",                // topic code
                 "run",
