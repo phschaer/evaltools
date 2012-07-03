@@ -1,17 +1,27 @@
 #!/bin/bash
 
+#
+# WARNING: Das hier funktioniert nicht, weil immer nur eine TopicID pro Dokument 
+# gespeichert wird. Bei jeder Re-Indexierung wird der alte TopicID Wert neu
+# geschrieben... Möglich wäre es mehrere &literal.topicid= Parameter zu 
+# übergeben, aber das würde eh nichts bringen, da wir hier keine ISSN, Autor
+# oder sonstigen Informationen haben...
+#
+
 cd ../../isearch-v1.0/PF-judged
 DIRS=*
 URL=http://localhost:8983/solr/update
 
 for d in $DIRS; do
-FILES=$d/*
+cd $d
+FILES=*
     for f in $FILES; do
       id=isearch-`echo $f | sed -r 's/.pdf$//'` # extract the id from the filename
       echo "Posting $id to $URL"
       curl "$URL/extract?literal.id=$id&literal.collection=isearch-PF&literal.topicid=$d" -F "text=@$f"
       echo
     done
+cd..	
 done
 
 #send the commit command to make sure all the changes are flushed and visible
