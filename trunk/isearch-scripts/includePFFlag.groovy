@@ -1,4 +1,9 @@
-import groovy.xml.StreamingMarkupBuilder
+/**
+ * DEPRECATED!!!
+ *
+ * Ist jetzt in der arXivFilterPF inkludiert!
+ */
+
 
 /**
 * Die Idee ist (weil Solr ja keine updates für Datensätze zulässt, sondern nur 

@@ -7,6 +7,7 @@
 
 import groovy.util.logging.*
 import org.apache.log4j.Level
+import java.math.MathContext
 
 @Log4j //http://marxsoftware.blogspot.de/2011/05/easy-groovy-logger-injection-and-log.html
 
@@ -22,7 +23,8 @@ class SolrCrawler {
             r args: 1, longOpt: 'run', required: false, 'custom runName scheme (like "gesis-adhoc")'
             n args: 1, longOpt: 'num', required: false, 'number of documents returned and included in Trec-File (default=10)'
             t args: 1, longOpt: 'toptype', required: true, '[xml|csv] original XML (default) file or CSV with extra data'
-            l args: 1, longOpt: 'lang', required: false, '[en|de|fr] which mono-lingual run (default=de)'
+            el args: 1, longOpt: 'lang', required: false, '[en|de|fr] which start lang (default=de)'
+            gl args: 1, longOpt: 'lang', required: false, '[en|de|fr] which goal lang (default=de)'
             e args: 1, longOpt: 'exp', required: false, '[str|wiki_entity|wiki_sim|wiki_back] expansion method (default = wiki_entity)'
         }
 
@@ -41,11 +43,14 @@ class SolrCrawler {
 
         // read in the command line options
         String runName = options.r ? options.r : "run" // is there a custom runName?
-        String lang = options.l ? options.l : "de" // which language for monolingual runs?
+        String entryLang = options.el ? options.el : "de" // which entry language for the runs?
+        String goalLang = options.gl ? options.gl : "de" // which goal language for runs?
         int numResults = options.n ? options.n.toInteger() : 10 // return a different number of documents?
         String expMethod = options.e ? options.e : "wiki_entity"
         String printType = options.o ? "file" : "stdout" // show we print the results into files?
-        File outputFolder = options.o ? new File(options.o.toString()) : new File("./results")
+
+        String folderName = "TASK1-${expMethod}_${entryLang}_${goalLang}"
+        File outputFolder = options.o ? new File(new File(options.o.toString()),folderName) : new File("./results")
         options.o ? outputFolder.mkdir() : null
 
         // read in the command line arguments
@@ -78,7 +83,7 @@ class SolrCrawler {
         }
 
         // start the crawler
-        crawler.crawlSolr(solrURL, topicIDMap, runName, numResults, printType, outputFolder, lang, expMethod)
+        crawler.crawlSolr(solrURL, topicIDMap, runName, numResults, printType, outputFolder, entryLang, expMethod)
 
     }
 
@@ -96,10 +101,11 @@ class SolrCrawler {
                     map["str_de"] = line?.split(";")?.collect()?.getAt(8)?.toString()?.tokenize(",")
                     map["str_en"] = line?.split(";")?.collect()?.getAt(9)?.toString()?.tokenize(",")
                     map["wiki"] = line?.split(";")?.collect()?.getAt(10)?.toString()?.tokenize(",")
-                    map["wiki_entity_de"] = line?.split(";")?.collect()?.getAt(11)?.toString()?.tokenize(",")
-                    map["wiki_sim_en"] = line?.split(";")?.collect()?.getAt(12)?.toString()?.tokenize(",")
-                    map["wiki_sim_de"] = line?.split(";")?.collect()?.getAt(13)?.toString()?.tokenize(",")
-                    map["wiki_back_en"] = line?.split(";")?.collect()?.getAt(14)?.toString()?.tokenize(",")
+                    map["wiki_entity_en"] = line?.split(";")?.collect()?.getAt(11)?.toString()?.tokenize(",")
+                    map["wiki_entity_de"] = line?.split(";")?.collect()?.getAt(12)?.toString()?.tokenize(",")
+                    map["wiki_sim_en"] = line?.split(";")?.collect()?.getAt(13)?.toString()?.tokenize(",")
+                    map["wiki_sim_de"] = line?.split(";")?.collect()?.getAt(14)?.toString()?.tokenize(",")
+                    map["wiki_back_en"] = line?.split(";")?.collect()?.getAt(15)?.toString()?.tokenize(",")
                     topicMap[(id)] = map // put it all together
                 }
             }
@@ -115,7 +121,7 @@ class SolrCrawler {
     def constructQuery(Map topicIDMap, String lang, String expMethod){
         def queries = [:]
         topicIDMap.each {topicid,Map map ->
-            String language = "dc_language_s:${lang} AND "
+            //String language = "dc_language_s:${lang} AND "
             String title = ""
             String expansion = ""
 
@@ -127,19 +133,24 @@ class SolrCrawler {
                 titleString += titleWord
                 if (index+1 < titleWords.size()){titleString += " OR "}
             }
-            title += "chic_all-wslc:(${titleString})^10"
+            title += "chic_all-${lang}:(${titleString})^2"
 
             // build the expansion terms
-            def wikiWords = map[("${expMethod}_${lang}")]
+            def expWords = map[("${expMethod}_${lang}")]
             String expString = ""
-            wikiWords.eachWithIndex {wikiWord, index ->
-                expString += wikiWord
-                if (index+1 < wikiWords.size()){expString += " OR "}
+            expWords.eachWithIndex {String expWord, index ->
+                expString += expWord.startsWith('\"') ? expWord : "\"${expWord}\""
+                if (index+1 < expWords.size()){expString += " OR "}
             }
-            expansion += " chic_all-wslc:(${expString})"
+            expansion += "chic_all-${lang}:(${expString})"
 
             // sum it all up
-            queries[(topicid)] = language + title + expansion
+            if(expString.size()>1){
+                queries[(topicid)] = "${title} OR ${expansion}"
+            }
+            else{
+                queries[(topicid)] = "${title}"
+            }
         }
 
         return queries
@@ -147,10 +158,14 @@ class SolrCrawler {
 
     def crawlSolr(String solrURL, Map topicIDMap, String runName, int numResults, String printType, File outputFolder, String lang, String expMethod) {
         def queries = constructQuery(topicIDMap,lang,expMethod)
+
+        File logFile = new File(outputFolder,"queryLog.txt")
+
         queries.each {topicid, query ->
             log.debug "Get query for topicID ${topicid}: ${query}"
 
             String solr = "${solrURL}/select?q=${query}&fl=score,id&rows=${numResults}"
+            logFile << "$topicid;$query;$solr"
             log.debug solr
 
             def solrResponse = new XmlSlurper().parse(solr)
@@ -159,17 +174,19 @@ class SolrCrawler {
             def results = []
             solrResponse.result.doc.eachWithIndex {doc, int i ->
                 if (i < 1000) {
-                    def id = doc.str.findAll {it.@name == "id"}
-                    def score = doc.float.findAll {it.@name == "score"}
-                    String resultString = "${topicid} Q0 ${id} ${i} ${score} ${runName}"
+                    String id = doc.str.findAll {it.@name == "id"}
+                    double score = doc.float.findAll {it.@name == "score"}.toString().toFloat()
+                    String resultString = "${topicid} Q0 ${id} ${i} ${score.trunc(Double.SIZE)} ${runName}"
                     results.add(resultString)
                 }
             }
 
             if (printType == "file") {
+                logFile << "$topicid $query\n" // log the query
                 File resultFile = new File(outputFolder, "${runName}-${topicid}.txt")
                 results.each {resultFile << it << "\n"}
-                log.debug "Wrote the TrecFile for Topic ${title} to ${resultFile}"
+
+                log.debug "Wrote the TrecFile for Topic ${topicid} to ${resultFile}"
             }
             else { // print on stdout
                 results.each {
