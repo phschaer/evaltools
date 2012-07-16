@@ -25,7 +25,7 @@ class SolrCrawler {
             t args: 1, longOpt: 'toptype', required: true, '[xml|csv] original XML (default) file or CSV with extra data'
             el args: 1, longOpt: 'lang', required: false, '[en|de|fr] which start lang (default=de)'
             gl args: 1, longOpt: 'lang', required: false, '[en|de|fr] which goal lang (default=de)'
-            e args: 1, longOpt: 'exp', required: false, '[str|wiki_entity|wiki_sim|wiki_back] expansion method (default = wiki_entity)'
+            e args: 1, longOpt: 'exp', required: false, '[combo|str|wiki_entity|wiki_sim|wiki_back] expansion method (default = wiki_entity)'
         }
 
         // init the command line options
@@ -121,7 +121,7 @@ class SolrCrawler {
     def constructQuery(Map topicIDMap, String lang, String expMethod){
         def queries = [:]
         topicIDMap.each {topicid,Map map ->
-            //String language = "dc_language_s:${lang} AND "
+            String language = "dc_language_s:${lang} AND "
             String title = ""
             String expansion = ""
 
@@ -136,12 +136,31 @@ class SolrCrawler {
             title += "chic_all-${lang}:(${titleString})^2"
 
             // build the expansion terms
-            def expWords = map[("${expMethod}_${lang}")]
             String expString = ""
-            expWords.eachWithIndex {String expWord, index ->
-                expString += expWord.startsWith('\"') ? expWord : "\"${expWord}\""
-                if (index+1 < expWords.size()){expString += " OR "}
+            if(expMethod.equals("combo")){
+                def strWords = map[("str_${lang}")]
+                def wikiEntityWords = map[("wiki_entity_${lang}")]
+                def expList = []
+                strWords.eachWithIndex {String expWord, index ->
+                    expList += expWord.trim().startsWith('\"') ? expWord : "\"${expWord}\""
+                }
+                wikiEntityWords.eachWithIndex {String expWord, index ->
+                    expList += expWord.trim().startsWith('\"') ? expWord : "\"${expWord}\""
+                }
+                expList.eachWithIndex {expWord, index ->
+                    expString += expWord
+                    if (index+1 < expList.size()){expString += " OR "}
+                }
+
             }
+            else{
+                def expWords = map[("${expMethod}_${lang}")]
+                expWords.eachWithIndex {String expWord, index ->
+                    expString += expWord.startsWith('\"') ? expWord : "\"${expWord}\""
+                    if (index+1 < expWords.size()){expString += " OR "}
+                }
+            }
+
             expansion += "chic_all-${lang}:(${expString})"
 
             // sum it all up
@@ -165,7 +184,7 @@ class SolrCrawler {
             log.debug "Get query for topicID ${topicid}: ${query}"
 
             String solr = "${solrURL}/select?q=${query}&fl=score,id&rows=${numResults}"
-            logFile << "$topicid;$query;$solr"
+            logFile << "$topicid;$query;$solr\n"
             log.debug solr
 
             def solrResponse = new XmlSlurper().parse(solr)
@@ -182,7 +201,7 @@ class SolrCrawler {
             }
 
             if (printType == "file") {
-                logFile << "$topicid $query\n" // log the query
+                //logFile << "$topicid $query\n" // log the query
                 File resultFile = new File(outputFolder, "${runName}-${topicid}.txt")
                 results.each {resultFile << it << "\n"}
 
