@@ -18,7 +18,8 @@ fileList.each{file ->
 }
 
 map.each {key, value ->
-    def output = new File(folder,"${key.replace("10.2452/","")}.csv")
+    String filename = "${key.replace("10.2452/","").replace("-DS","")}.csv"
+    def output = new File(folder,filename)
     String outputString = ""
     value.each {val ->
         outputString += "${val}\n"
