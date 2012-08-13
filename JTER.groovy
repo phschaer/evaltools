@@ -419,6 +419,7 @@ class JTER {
                 "recall",
                 "avgPrecision",         // MAP
                 "rPrecision",           // r-Precision
+				"bpref",				// binary preference
                 "p@5",                  // P@n
                 "p@10",
                 "p@15",
@@ -476,6 +477,7 @@ class JTER {
                         csv.append "${NumberFormat.getInstance().format(sm.getRelevantRetrieved() / sm.getRelevant())};"
                         csv.append "${NumberFormat.getInstance().format(sm.getAvgPrec())};"
                         csv.append "${NumberFormat.getInstance().format(sm.getRPrec())};"
+						csv.append "${NumberFormat.getInstance().format(sm.getBpref())};"
                         sm.cutOffPrecisions.each {csv.append "${NumberFormat.getInstance().format(it);};"}
                         csv.append "\n"
                         nextQuery++;
@@ -497,7 +499,7 @@ class JTER {
         }
 
         // Add stats
-        def stats = ["run", "recall", "avgPrecision", "rPrecison", "p@5", "p@10", "p@15", "p@20", "p@30", "p@100", "p@200"]
+        def stats = ["run", "recall", "avgPrecision", "rPrecison", "bpref", "p@5", "p@10", "p@15", "p@20", "p@30", "p@100", "p@200"]
         // build CSV heading from headingList
         csv.append "\n\n"
         stats.eachWithIndex { stat, index ->
@@ -505,7 +507,7 @@ class JTER {
         }
         int startRow = 2
         int endRow = startRow + topicCounter - 1
-        def rows = ["F", "G", "H", "I", "J", "K", "L", "M", "N", "O"]
+        def rows = ["F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P"]
         for (int x = 0; x < runList.size(); x++) {
             startRow = 2 + x * topicCounter
             endRow = startRow + topicCounter - 1
@@ -533,6 +535,7 @@ class JTER {
                 "recall",
                 "avgPrecision",         // MAP
                 "rPrecision",           // r-Precision
+				"bpref",           		// binary preference
                 "p@5",                  // P@n
                 "p@10",
                 "p@15",
@@ -590,6 +593,7 @@ class JTER {
                             csv.append "${NumberFormat.getInstance().format(sm.getRelevantRetrieved() / sm.getRelevant())};"
                             csv.append "${NumberFormat.getInstance().format(sm.getAvgPrec())};"
                             csv.append "${NumberFormat.getInstance().format(sm.getRPrec())};"
+							csv.append "${NumberFormat.getInstance().format(sm.getBpref())};"
                             sm.cutOffPrecisions.each {csv.append "${NumberFormat.getInstance().format(it);};"}
                             csv.append "\n"
                             nextQuery++;
@@ -611,7 +615,7 @@ class JTER {
             }
         }
         // Add stats
-        def stats = ["run", "recall", "avgPrecision", "rPrecison", "p@5", "p@10", "p@15", "p@20", "p@30", "p@100", "p@200"]
+        def stats = ["run", "recall", "avgPrecision", "rPrecison", "bpref", "p@5", "p@10", "p@15", "p@20", "p@30", "p@100", "p@200"]
         // build CSV heading from headingList
         csv.append "\n\n"
         stats.eachWithIndex { stat, index ->
@@ -619,7 +623,7 @@ class JTER {
         }
         int startRow = 2
         int endRow = startRow + topicCounter - 1
-        def rows = ["F", "G", "H", "I", "J", "K", "L", "M", "N", "O"]
+        def rows = ["F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P"]
         for (int x = 0; x < runList.size(); x++) {
             startRow = 2 + x * topicCounter
             endRow = startRow + topicCounter - 1
