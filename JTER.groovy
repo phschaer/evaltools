@@ -26,9 +26,9 @@ import org.apache.log4j.Level
 @Log4j //http://marxsoftware.blogspot.de/2011/05/easy-groovy-logger-injection-and-log.html
 class JTER {
 
-    static String RScriptLocation =  "C:/Program Files/R/R-2.15.0/bin/Rscript.exe"
-    static String girtFolder =  "D:/evaldata/girt"
-    static String isearchFolder =   "D:/evaldata/isearch-v1.0"
+    static String RScriptLocation = "C:/Program Files/R/R-2.15.0/bin/Rscript.exe"
+    static String girtFolder = "D:/evaldata/girt"
+    static String isearchFolder = "D:/evaldata/isearch-v1.0"
     static String outputRoot = "D:/evaldata/results"
     static String date = new Date().format('yyyy-MM-dd_HHmmss').toString()
 
@@ -37,10 +37,10 @@ class JTER {
 		// read in the JTER.properties file and set config values
 		try{
 			def config = new ConfigSlurper().parse(new File('./JTER.properties').toURL())
-			RScriptLocation = config.JTER.RScriptLocation
-			girtFolder = config.JTER.girtFolder
-			isearchFolder = config.JTER.isearchFolder
-			outputRoot = config.JTER.outputRoot
+			RScriptLocation = config.RScriptLocation			
+			girtFolder = config.girtFolder
+			isearchFolder = config.isearchFolder
+			outputRoot = config.outputRoot
 		}
 		catch(e){
 			println "Did not found a JTER.properties file - Using default values"	
