@@ -1,6 +1,6 @@
 library(matlab)
 library(VGAM)
-# source("http://tuvalu.santafe.edu/~aaronc/powerlaws/plpva.r")
+source("http://tuvalu.santafe.edu/~aaronc/powerlaws/plpva.r")
 
 drawPlot <- function(currentDir,year,type){    
   
@@ -45,31 +45,35 @@ drawPlot <- function(currentDir,year,type){
     
     # TODO: check is we really observed a PL 
     # See Clauset et al (2009) - section 4.2        
-    pval <- plpva(freqs,xmin,Bt=10,quiet=TRUE)
+    pval <- plpva(freqs,xmin,Bt=1000,quiet=TRUE)
     # print(pval)
     
-    # draw an approximated (wrong!) logistic model 
-    abline(lm(log10(freqs)~log10(ranks)),lty=2)
+    # draw a dotted line to mark xmin
+    abline(v=xmin,lty=3)      
     
-    if(pval$p >= 0.1){
-      # TODO: This is not correctly plotting!!!
-      # not quite sure why I have to add 10 to xmin 
-      # (maybe log10(10)=1, so we just add 1 actually...            
-      # abline(a=log10(xmin+10),b=(-(log10(alpha))))              
+    if(pval$p >= 0.1){      
+            
+      # calulate the intersection with y-axis (y_0) and set this
+      # as the (a) intersect=y_0 and (b) slope=-alpha      
+      y_xmin <- freqs[xmin] 
+      y_0 <- y_xmin + (xmin * alpha)
+      # print(paste('Koordinaten: ', xmin, y_xmin, -alpha, y_0))
+      abline(a=log10(y_0), b=-log10(alpha),lty=3)            
       
-      # x1 <- xmin
-      # y1 <- freqs[xmin]
-      # x2 <- xmin+10
-      # y2 <- xmin+10^(-alpha)
-      # lines(c(x1,y1),c(x2,y2))
-      # print(paste(x1,y1,x2,y2))
-
-      # draw a dotted line to mark xmin
-      abline(v=xmin,lty=3)
+      # very skewed plot... but seems right
+      # WARNING: NOT WORKING WITH LOG-LOG-PLOT
+      # x1 <- log10(xmin)
+      # y1 <- log10(freqs[xmin])
+      # x2 <- log10(max(ranks))
+      # y2 <- x2*(-log10(alpha))            
+      # segments(c(x1), c(y1), c(x2), c(y2), col= 'red')
+      # print(paste('segments: ',x1,y1,x2,y2))
       
       # draw an approximated (wrong!) logistic regression model
+      # abline(lm(log10(freqs)~log10(ranks)),lty=2)      
       # we only use the data in respect to xmin
-      # abline(lm(log10(freqs[xmin:length(freqs)])~log10(ranks[xmin:length(ranks)])),lty=2)    
+      # abline(lm(log10(freqs[xmin:length(freqs)])~log10(ranks[xmin:length(ranks)])),lty=3)      
+            
     }
     
     # add some decorating text
@@ -82,11 +86,11 @@ drawPlot <- function(currentDir,year,type){
   dev.off() #close file  
 }
 
-#rootDir <- "C:/Users/sc/Dropbox/Dissertation/results/girt/Facetten-Analyse"
-rootDir <- "/Users/schaer/Dropbox/Dissertation/results/girt/Facetten-Analyse"
-entities <- c("test")
-#entities <- c("author","classification","issn","location","method",
-#              "publisher","pubyear","subject")
+rootDir <- "C:/Users/sc/Dropbox/Dissertation/results/girt/Facetten-Analyse"
+#rootDir <- "/Users/schaer/Dropbox/Dissertation/results/girt/Facetten-Analyse"
+#entities <- c("test")
+entities <- c("author","classification","issn","location","method",
+              "publisher","pubyear","subject")
 
 for(entity in entities){
   currentDir = paste(rootDir,'/',entity,sep='')
