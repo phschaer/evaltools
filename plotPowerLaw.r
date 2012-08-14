@@ -48,6 +48,9 @@ drawPlot <- function(currentDir,year,type){
     pval <- plpva(freqs,xmin,Bt=10,quiet=TRUE)
     # print(pval)
     
+    # draw an approximated (wrong!) logistic model 
+    abline(lm(log10(freqs)~log10(ranks)),lty=2)
+    
     if(pval$p >= 0.1){
       # TODO: This is not correctly plotting!!!
       # not quite sure why I have to add 10 to xmin 
