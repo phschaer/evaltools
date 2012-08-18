@@ -118,7 +118,7 @@ class JTER {
     def runRPowerLaw(List years, List runs, File outputDir) {
         // init stuff
         def csv = new File(outputDir, "powerlaw-${date}.csv")
-        csv.append "topic;run;alpha;D;xmin\n"
+        csv.append "topic;run;alpha;D;xmin;pval;gof\n"
 
         //Iterate over the facet files and fill the facetMap
         def facetMap = [:]
@@ -149,10 +149,15 @@ class JTER {
                 def alpha = plResult.alpha
                 def D = plResult.D
                 def xmin = plResult.xmin
+                def pval = plResult.pval
+                def gof = plResult.gof
+
                 csv.append "${key.split("_").getAt(0)};${key.split("_").getAt(1)};"
                 csv.append "${NumberFormat.getInstance().format(alpha)};"
                 csv.append "${NumberFormat.getInstance().format(D)};"
-                csv.append "${NumberFormat.getInstance().format(xmin)};\n"
+                csv.append "${NumberFormat.getInstance().format(xmin)};"
+                csv.append "${NumberFormat.getInstance().format(pval)};"
+                csv.append "${NumberFormat.getInstance().format(gof)};\n"
             }
         }
 
@@ -273,24 +278,33 @@ class JTER {
 
         // check if there are at least two unique values - otherwise plfit will panic
         if (xValues.toList().unique().size() <= 2) {
-            return [alpha: -1, D: -1, xmin: -1]
+            return [alpha: -1, D: -1, xmin: -1, pval:-1, gof:-1]
         }
 
         try {
             //Creating an instance of class RCaller
             RCaller caller = new RCaller()
+            RCaller caller_plpva = new RCaller()
             caller.setRscriptExecutable(rScript)
+            caller_plpva.setRscriptExecutable(rScript)
 
             //Create a new RCode container
             RCode code = new RCode()
+            RCode code_plpva = new RCode()
 
             //Include plfit.r from the resources folder
             def plfitFile = new File("lib/plfit.r")
             String plfitScript = plfitFile.getAbsolutePath().replace("${File.separator}", "/").toString()
             log.debug "plfitScript Location: $plfitScript"
 
-            // Read in the PowerLawFit R-Script
+            //Include plpva.r from the resources folder
+            def plpvaFile = new File("lib/plpva.r")
+            String plpvaScript = plpvaFile.getAbsolutePath().replace("${File.separator}", "/").toString()
+            log.debug "plpvaScript Location: $plpvaScript"
+
+            // Read in the PowerLawFit R-Scripts
             code.R_source(plfitScript)
+            code_plpva.R_source(plpvaScript)
 
             // Read in the xValues and calculate the Power Law exponent
             code.addIntArray("xValues", xValues)
@@ -311,23 +325,50 @@ class JTER {
             caller.runAndReturnResult("output")
 
             // We are printing the content of our RCode and generated XML
-            log.trace "getRCode():"
-            log.trace "****************************"
-            log.trace caller.getRCode()
-            log.trace "****************************"
-            log.trace "getXMLFileAsString():"
-            log.trace caller.getParser().getXMLFileAsString()
-            log.trace "****************************"
-            log.trace "getNames(): ${caller.getParser().getNames()}"
+            log.debug "getRCode():"
+            log.debug "****************************"
+            log.debug caller.getRCode()
+            log.debug "****************************"
+            log.debug "getXMLFileAsString():"
+            log.debug caller.getParser().getXMLFileAsString()
+            log.debug "****************************"
+            log.debug "getNames(): ${caller.getParser().getNames()}"
 
             // Get the alpha value out of the generated XML
             double alpha = caller.getParser().getAsDoubleArray("alpha").toList().get(0)
             double D = caller.getParser().getAsDoubleArray("D").toList().get(0)
-            double xmin = caller.getParser().getAsDoubleArray("xmin").toList().get(0)
-            log.debug "xValues: ${xValues}"
-            log.debug "alpha: ${alpha}, D: ${D}, xmin: ${xmin}"
+            int xmin = caller.getParser().getAsIntArray("xmin").toList().get(0)
 
-            return [alpha: alpha, D: D, xmin: xmin]
+            // Check is we really observed a PowerLaw
+            // See Clauset et al (2009) - section 4.2
+            // Setting the Bt to 100 (no. of iterations for the PL-check)
+            // 1000 is more accurate, but takes ages
+            int bt = 1000
+            code_plpva.addIntArray("xValues", xValues)
+            code_plpva.addRCode("library(VGAM)")
+            code_plpva.addRCode("temp <- plpva(xValues,${xmin},Bt=${bt},quiet=TRUE)")
+            code_plpva.addRCode("output2 <- list(pval=c(temp\$p), gof=c(temp\$gof))")
+            caller_plpva.setRCode(code_plpva)
+            caller_plpva.runAndReturnResult("output2")
+
+			 // We are printing the content of our RCode and generated XML
+            log.debug "getRCode():"
+            log.debug "****************************"
+            log.debug caller_plpva.getRCode()	            
+            log.debug "****************************"
+            log.debug "getXMLFileAsString():"
+            log.debug caller_plpva.getParser().getXMLFileAsString()
+            log.debug "****************************"
+            log.debug "getNames(): ${caller_plpva.getParser().getNames()}"
+
+            // Get the pval from the generated XML
+            double pval = caller_plpva.getParser().getAsDoubleArray("pval").toList().get(0)
+            double gof = caller_plpva.getParser().getAsDoubleArray("gof").toList().get(0)
+
+            log.debug "xValues: ${xValues}"
+            log.debug "alpha: ${alpha}, D: ${D}, xmin: ${xmin}, pval: ${pval}, gof: ${gof}"
+
+            return [alpha: alpha, D: D, xmin: xmin, pval: pval, gof: gof]
 
         }
 
@@ -338,7 +379,7 @@ class JTER {
             log.error Exception
         }
         finally {
-            log.debug "Finished the plfit method"
+            log.debug "Finished the plfit and plpva methods"
         }
     }
 
