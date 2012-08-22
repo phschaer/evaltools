@@ -126,11 +126,21 @@ class JTER {
             years.each {year ->
                 runs.each {run ->
                     def facetFile = new File(outputDir, "facets-${run}-${year}.txt")
-                    facetFile.splitEachLine(";") {topic, name, code, count ->
-                        List<Integer> tempList = facetMap[("${topic}_${run}")] ?: []
-                        tempList.add(count.toInteger())
-                        facetMap[("${topic}_${run}")] = tempList // List in Map
-                    }
+                    // there are two types of facet files, so we have to make a difference here
+					if(facetFile.readLines().getAt(0).count(";") == 2){
+						facetFile.splitEachLine(";") {topic, code, count ->
+							List<Integer> tempList = facetMap[("${topic}_${run}")] ?: []
+							tempList.add(count.toInteger())
+							facetMap[("${topic}_${run}")] = tempList // List in Map
+						}
+					}
+					else{
+						facetFile.splitEachLine(";") {topic, name, code, count ->
+							List<Integer> tempList = facetMap[("${topic}_${run}")] ?: []
+							tempList.add(count.toInteger())
+							facetMap[("${topic}_${run}")] = tempList // List in Map
+						}
+					}
                 }
             }
         }
