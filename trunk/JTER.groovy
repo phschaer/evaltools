@@ -47,12 +47,13 @@ class JTER {
 			println e
 		}
 	
-		def cli = new CliBuilder(usage: 'JTER.groovy -[htkpdc] folder')
+		def cli = new CliBuilder(usage: 'JTER.groovy -[htkpdcigd] folder')
 		cli.with {
 			h longOpt: 'help', 'Show usage information'
 			t longOpt: 'treceval', 'Run typical trec_eval analysis'
 			k longOpt: 'kendall', 'Run Kendalls tau analysis'
 			p longOpt: 'powerlaw', 'Run PowerLaw analysis'
+            c longOpt: 'calcpval', 'Calculate the pval for the PowerLaws'
 			i longOpt: 'isearch', 'Use the iSearch corpus'
 			g longOpt: 'girt', 'Use the GIRT corpus'
             d longOpt: 'debug', 'Print debug messages'
@@ -109,13 +110,18 @@ class JTER {
         }
         if (options.p) {
             log.info "Start writing the PowerLaw output to ${outputDir}/powerlaw-${date}.csv"
-            girt.runRPowerLaw(qrelsYears, runList, outputDir)
+            if(options.c){
+                girt.runRPowerLaw(qrelsYears, runList, outputDir, true)                
+            }
+            else{
+                girt.runRPowerLaw(qrelsYears, runList, outputDir)
+            }
             log.info "done"
         }
 
     }
 
-    def runRPowerLaw(List years, List runs, File outputDir) {
+    def runRPowerLaw(List years, List runs, File outputDir, boolean calcPval = false) {
         // init stuff
         def csv = new File(outputDir, "powerlaw-${date}.csv")
         csv.append "topic;run;alpha;D;xmin;pval;gof\n"
@@ -153,7 +159,7 @@ class JTER {
         facetMap.eachWithIndex {key, val, index ->
             List xvalues = val
             int[] x = xvalues
-            def plResult = getPowerLawFit(x)
+            def plResult = getPowerLawFit(x,calcPval)
 
             if (plResult) {
                 def alpha = plResult.alpha
@@ -281,7 +287,7 @@ class JTER {
 
     }
 
-    def getPowerLawFit(int[] xValues) {
+    def getPowerLawFit(int[] xValues, boolean calcPval) {
 
         // Get the location to the RScript file
         String rScript = this.RScriptLocation
@@ -294,27 +300,18 @@ class JTER {
         try {
             //Creating an instance of class RCaller
             RCaller caller = new RCaller()
-            RCaller caller_plpva = new RCaller()
             caller.setRscriptExecutable(rScript)
-            caller_plpva.setRscriptExecutable(rScript)
 
             //Create a new RCode container
             RCode code = new RCode()
-            RCode code_plpva = new RCode()
 
             //Include plfit.r from the resources folder
             def plfitFile = new File("lib/plfit.r")
             String plfitScript = plfitFile.getAbsolutePath().replace("${File.separator}", "/").toString()
             log.debug "plfitScript Location: $plfitScript"
-
-            //Include plpva.r from the resources folder
-            def plpvaFile = new File("lib/plpva.r")
-            String plpvaScript = plpvaFile.getAbsolutePath().replace("${File.separator}", "/").toString()
-            log.debug "plpvaScript Location: $plpvaScript"
-
+            
             // Read in the PowerLawFit R-Scripts
-            code.R_source(plfitScript)
-            code_plpva.R_source(plpvaScript)
+            code.R_source(plfitScript)            
 
             // Read in the xValues and calculate the Power Law exponent
             code.addIntArray("xValues", xValues)
@@ -348,32 +345,48 @@ class JTER {
             double alpha = caller.getParser().getAsDoubleArray("alpha").toList().get(0)
             double D = caller.getParser().getAsDoubleArray("D").toList().get(0)
             int xmin = caller.getParser().getAsIntArray("xmin").toList().get(0)
+            
+            // init some dummy values for pval and gof, just in case we don't want to calc them
+            double pval = -1.0
+            double gof = -1.0
+            
+            if(calcPval == true){
+                // And do it all again, if calcPval is true
+                //Include plpva.r from the resources folder
+                RCode code_plpva = new RCode()
+    			RCaller caller_plpva = new RCaller()
+                caller_plpva.setRscriptExecutable(rScript)
+                def plpvaFile = new File("lib/plpva.r")
+                String plpvaScript = plpvaFile.getAbsolutePath().replace("${File.separator}", "/").toString()
+                log.debug "plpvaScript Location: $plpvaScript"
+                code_plpva.R_source(plpvaScript)            
 
-            // Check is we really observed a PowerLaw
-            // See Clauset et al (2009) - section 4.2
-            // Setting the Bt to 100 (no. of iterations for the PL-check)
-            // 1000 is more accurate, but takes ages
-            int bt = 1000
-            code_plpva.addIntArray("xValues", xValues)
-            code_plpva.addRCode("library(VGAM)")
-            code_plpva.addRCode("temp <- plpva(xValues,${xmin},Bt=${bt},quiet=TRUE)")
-            code_plpva.addRCode("output2 <- list(pval=c(temp\$p), gof=c(temp\$gof))")
-            caller_plpva.setRCode(code_plpva)
-            caller_plpva.runAndReturnResult("output2")
+                // Check is we really observed a PowerLaw
+                // See Clauset et al (2009) - section 4.2
+                // Setting the Bt to 100 (no. of iterations for the PL-check)
+                // 1000 is more accurate, but takes ages
+                int bt = 1000
+                code_plpva.addIntArray("xValues", xValues)
+                code_plpva.addRCode("library(VGAM)")
+                code_plpva.addRCode("temp <- plpva(xValues,${xmin},Bt=${bt},quiet=TRUE)")
+                code_plpva.addRCode("output2 <- list(pval=c(temp\$p), gof=c(temp\$gof))")
+                caller_plpva.setRCode(code_plpva)
+                caller_plpva.runAndReturnResult("output2")
 
-			 // We are printing the content of our RCode and generated XML
-            log.debug "getRCode():"
-            log.debug "****************************"
-            log.debug caller_plpva.getRCode()	            
-            log.debug "****************************"
-            log.debug "getXMLFileAsString():"
-            log.debug caller_plpva.getParser().getXMLFileAsString()
-            log.debug "****************************"
-            log.debug "getNames(): ${caller_plpva.getParser().getNames()}"
+    			 // We are printing the content of our RCode and generated XML
+                log.debug "getRCode():"
+                log.debug "****************************"
+                log.debug caller_plpva.getRCode()	            
+                log.debug "****************************"
+                log.debug "getXMLFileAsString():"
+                log.debug caller_plpva.getParser().getXMLFileAsString()
+                log.debug "****************************"
+                log.debug "getNames(): ${caller_plpva.getParser().getNames()}"
 
-            // Get the pval from the generated XML
-            double pval = caller_plpva.getParser().getAsDoubleArray("pval").toList().get(0)
-            double gof = caller_plpva.getParser().getAsDoubleArray("gof").toList().get(0)
+                // Get the pval from the generated XML
+                pval = caller_plpva.getParser().getAsDoubleArray("pval").toList().get(0)
+                gof = caller_plpva.getParser().getAsDoubleArray("gof").toList().get(0)
+            }
 
             log.debug "xValues: ${xValues}"
             log.debug "alpha: ${alpha}, D: ${D}, xmin: ${xmin}, pval: ${pval}, gof: ${gof}"
