@@ -73,7 +73,7 @@ class JTER {
         log.debug "java.library.path: ${System.properties['java.library.path']}"
         log.debug("RScriptLocation: $RScriptLocation")
         log.debug("Arguments: $args")
-        def girt = new JTER()
+        def jter = new JTER()
         File outputDir = new File(".")
 
         def extraArguments = options.arguments()
@@ -86,42 +86,42 @@ class JTER {
                 return
             }
         }
-
-        def qrelsYears = girt.getQrelsYears(outputDir)
-        def runList = girt.getRunList(qrelsYears, outputDir)
-		
+    
+        def qrelsYears = jter.getQrelsYears(outputDir)
+        def runList = jter.getRunList(qrelsYears, outputDir)
+        
         // Start the main program
         if (options.t) {
             if (options.g){
                 log.info "Start writing the TrecEval CSV file to ${outputDir}/results-${date}.csv"
-                girt.runJavaTrecEvalGirt(qrelsYears, runList, outputDir)
+                jter.runJavaTrecEvalGirt(qrelsYears, runList, outputDir)
                 log.info "done"
             }
-            if (options.i){
+            else if (options.i){
                 log.info "Start writing the TrecEval CSV file to ${outputDir}/results-${date}.csv"
-                girt.runJavaTrecEvaliSearch(runList, outputDir)
+                jter.runJavaTrecEvaliSearch(runList, outputDir)
                 log.info "done"
             }
         }
         if (options.k) {
             log.info "Start writing the R output to ${outputDir}/kendall-${date}.csv"
-            girt.runRKendall(qrelsYears, runList, outputDir)
+            jter.runRKendall(runList, outputDir)
             log.info "done"
         }
         if (options.p) {
             log.info "Start writing the PowerLaw output to ${outputDir}/powerlaw-${date}.csv"
             if(options.c){
-                girt.runRPowerLaw(qrelsYears, runList, outputDir, true)                
+                jter.runRPowerLaw(runList, outputDir, true)                                
             }
             else{
-                girt.runRPowerLaw(qrelsYears, runList, outputDir)
+                jter.runRPowerLaw(runList, outputDir)
             }
             log.info "done"
         }
 
     }
 
-    def runRPowerLaw(List years, List runs, File outputDir, boolean calcPval = false) {
+    def runRPowerLaw(List runs, File outputDir, boolean calcPval = false) {
         // init stuff
         def csv = new File(outputDir, "powerlaw-${date}.csv")
         csv.append "topic;run;alpha;D;xmin;pval;gof\n"
@@ -129,23 +129,21 @@ class JTER {
         //Iterate over the facet files and fill the facetMap
         def facetMap = [:]
         try {
-            years.each {year ->
-                runs.each {run ->
-                    def facetFile = new File(outputDir, "facets-${run}-${year}.txt")
-                    // there are two types of facet files, so we have to make a difference here
-					if(facetFile.readLines().getAt(0).count(";") == 2){
-						facetFile.splitEachLine(";") {topic, code, count ->
-							List<Integer> tempList = facetMap[("${topic}_${run}")] ?: []
-							tempList.add(count.toInteger())
-							facetMap[("${topic}_${run}")] = tempList // List in Map
-						}
+            runs.each {run ->
+                def facetFile = new File(outputDir, "facets-${run}.txt")
+                // there are two types of facet files, so we have to make a difference here
+				if(facetFile.readLines().getAt(0).count(";") == 2){
+					facetFile.splitEachLine(";") {topic, code, count ->
+						List<Integer> tempList = facetMap[("${topic}_${run}")] ?: []
+						tempList.add(count.toInteger())
+						facetMap[("${topic}_${run}")] = tempList // List in Map
 					}
-					else{
-						facetFile.splitEachLine(";") {topic, name, code, count ->
-							List<Integer> tempList = facetMap[("${topic}_${run}")] ?: []
-							tempList.add(count.toInteger())
-							facetMap[("${topic}_${run}")] = tempList // List in Map
-						}
+				}
+				else{
+					facetFile.splitEachLine(";") {topic, name, code, count ->
+					    List<Integer> tempList = facetMap[("${topic}_${run}")] ?: []
+						tempList.add(count.toInteger())
+						facetMap[("${topic}_${run}")] = tempList // List in Map
 					}
                 }
             }
@@ -179,7 +177,7 @@ class JTER {
 
     }
 
-    def runRKendall(List years, List runs, File outputDir) {
+    def runRKendall(List runs, File outputDir) {
         // init stuff
         def csv = new File(outputDir, "kendall-${date}.csv")
         csv.append "topic;run1;run2;size1;size2;overlapAbs;overlapPerc;tau;pvalue\n"
@@ -187,19 +185,18 @@ class JTER {
         // Fill up the kendalMap and the topics list
         def kendallMap = [:]
         def topics = [] as Set // unique topic numbers
-        years.each {year ->
-            runs.each {run ->
-                // extract all documents and their ranking per run and year
-                // Watch out: we have to lowercase all run names because of
-                // a possible mismatch between the filenames and the naming
-                // of the runs in the top_files.
-                def trecTopFile = new File(outputDir, "trec_top_file-${run}-${year}.txt")
-                trecTopFile.splitEachLine(" ") {topic, runNum, docid, ranking, score, runType ->
-                    def tempMap = kendallMap[("${topic}_${runType}")] ?: [:]
-                    topics.add(topic)
-                    tempMap[(docid)] = ranking.toInteger() + 1    // Rank 0 is Rank 1... R wants it this way
-                    kendallMap[("${topic}_${runType}")] = tempMap // Map in Map
-                }
+        
+        runs.each {run ->
+            // extract all documents and their ranking per run and year
+            // Watch out: we have to lowercase all run names because of
+            // a possible mismatch between the filenames and the naming
+            // of the runs in the top_files.
+            def trecTopFile = new File(outputDir, "trec_top_file-${run}.txt")
+            trecTopFile.splitEachLine(" ") {topic, runNum, docid, ranking, score, runType ->
+                def tempMap = kendallMap[("${topic}_${runType}")] ?: [:]
+                topics.add(topic)
+                tempMap[(docid)] = ranking.toInteger() + 1    // Rank 0 is Rank 1... R wants it this way
+                kendallMap[("${topic}_${runType}")] = tempMap // Map in Map
             }
         }
         log.debug "topics: $topics"
@@ -354,7 +351,7 @@ class JTER {
                 // And do it all again, if calcPval is true
                 //Include plpva.r from the resources folder
                 RCode code_plpva = new RCode()
-    			RCaller caller_plpva = new RCaller()
+                RCaller caller_plpva = new RCaller()
                 caller_plpva.setRscriptExecutable(rScript)
                 def plpvaFile = new File("lib/plpva.r")
                 String plpvaScript = plpvaFile.getAbsolutePath().replace("${File.separator}", "/").toString()
@@ -373,7 +370,7 @@ class JTER {
                 caller_plpva.setRCode(code_plpva)
                 caller_plpva.runAndReturnResult("output2")
 
-    			 // We are printing the content of our RCode and generated XML
+                // We are printing the content of our RCode and generated XML
                 log.debug "getRCode():"
                 log.debug "****************************"
                 log.debug caller_plpva.getRCode()	            
@@ -541,7 +538,7 @@ class JTER {
                         csv.append "${NumberFormat.getInstance().format(sm.getRelevantRetrieved() / sm.getRelevant())};"
                         csv.append "${NumberFormat.getInstance().format(sm.getAvgPrec())};"
                         csv.append "${NumberFormat.getInstance().format(sm.getRPrec())};"
-						csv.append "${NumberFormat.getInstance().format(sm.getBpref())};"
+                        csv.append "${NumberFormat.getInstance().format(sm.getBpref())};"
                         sm.cutOffPrecisions.each {csv.append "${NumberFormat.getInstance().format(it);};"}
                         csv.append "\n"
                         nextQuery++;
@@ -719,9 +716,9 @@ class JTER {
         topFiles.each {topFile ->
             def temp = topFile.toString().replace("trec_top_file-", "")
             temp = temp.replace(".txt", "")
-            qrelsYears.each {year ->
-                temp = temp.replace("-${year}", "")
-            }
+//            qrelsYears.each {year ->
+//                temp = temp.replace("-${year}", "")
+//            }
             runList.add(temp)
         }
         runList = runList.unique()
