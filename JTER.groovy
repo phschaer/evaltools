@@ -718,8 +718,9 @@ class JTER {
         def runList = []
         topFiles.each {topFile ->
             def temp = topFile.toString().replace("trec_top_file-", "")
+            temp = temp.replace(".txt", "")
             qrelsYears.each {year ->
-                temp = temp.replace("-${year}.txt", "")
+                temp = temp.replace("-${year}", "")
             }
             runList.add(temp)
         }
