@@ -124,7 +124,7 @@ class JTER {
     def runRPowerLaw(List runs, File outputDir, boolean calcPval = false) {
         // init stuff
         def csv = new File(outputDir, "powerlaw-${date}.csv")
-        csv.append "topic;run;alpha;D;xmin;pval;gof\n"
+        csv.append "topic;run;n;alpha;D;xmin;pval;gof\n"
 
         //Iterate over the facet files and fill the facetMap
         def facetMap = [:]
@@ -132,20 +132,34 @@ class JTER {
             runs.each {run ->
                 def facetFile = new File(outputDir, "facets-${run}.txt")
                 // there are two types of facet files, so we have to make a difference here
-				if(facetFile.readLines().getAt(0).count(";") == 2){
+				/*if(facetFile.readLines().getAt(0).count(";") == 2){
 					facetFile.splitEachLine(";") {topic, code, count ->
 						List<Integer> tempList = facetMap[("${topic}_${run}")] ?: []
 						tempList.add(count.toInteger())
 						facetMap[("${topic}_${run}")] = tempList // List in Map
 					}
 				}
-				else{
+				// old cvs line format
+				else if ((facetFile.readLines().getAt(0).count(";") == 3)){
 					facetFile.splitEachLine(";") {topic, name, code, count ->
 					    List<Integer> tempList = facetMap[("${topic}_${run}")] ?: []
 						tempList.add(count.toInteger())
 						facetMap[("${topic}_${run}")] = tempList // List in Map
 					}
                 }
+                // and maybe the lines are corrupted and we have to improvise
+                else {*/
+                    facetFile.eachLine {line ->
+                        // first col contains the topic
+                        def tokens = line.tokenize(";")
+                        String topic = tokens.getAt(0)      
+                        // last col contains the count
+                        int count = tokens.getAt(tokens.size()-1).toInteger() 
+					    List<Integer> tempList = facetMap[("${topic}_${run}")] ?: []
+						tempList.add(count)
+						facetMap[("${topic}_${run}")] = tempList // List in Map
+					}
+                //}
             }
         }
         catch (FileNotFoundException e) {
@@ -167,6 +181,7 @@ class JTER {
                 def gof = plResult.gof
 
                 csv.append "${key.split("_").getAt(0)};${key.split("_").getAt(1)};"
+                csv.append "${NumberFormat.getInstance().format(x.size())};"
                 csv.append "${NumberFormat.getInstance().format(alpha)};"
                 csv.append "${NumberFormat.getInstance().format(D)};"
                 csv.append "${NumberFormat.getInstance().format(xmin)};"
