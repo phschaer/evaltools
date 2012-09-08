@@ -596,8 +596,8 @@ class JTER {
 
     }
 
-    def runJavaTrecEvalGirt(ArrayList qrelsList, ArrayList runList, File outputDir, int topicsPerYear = 25) {
-        // Find out which paths are suitable for libjte.jnilib
+    def runJavaTrecEvalGirt(ArrayList qrelsList, ArrayList runList, File outputDir, int topicsPerYear = 25) {        		
+		// Find out which paths are suitable for libjte.jnilib
         log.trace("System.getProperty: ${System.getProperty('java.library.path')}")
         int topicCounter = qrelsList.size() * topicsPerYear
 
@@ -633,8 +633,10 @@ class JTER {
             else {(index < headingList.size() - 1) ? (nullLine += "0;") : (nullLine += "0\n")}
         }
 
-        runList.each {runName ->
+        runList.each {runName ->			
             qrelsList.each {year ->
+				// work-around: remove the year from the runame
+				runName = runName.replace("-${year}","")
                 String qrels = "${girtFolder}/qrels/qrels_ds_DE_${year}.txt"
                 String run = "${outputDir}/trec_top_file-${runName}-${year}.txt"
                 int nextQuery = -1;
