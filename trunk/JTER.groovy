@@ -634,11 +634,9 @@ class JTER {
         }
 
         runList.each {runName ->			
-            qrelsList.each {year ->
-				// work-around: remove the year from the runame
-				runName = runName.replace("-${year}","")
+                String year = runName.tokenize("-").last()
                 String qrels = "${girtFolder}/qrels/qrels_ds_DE_${year}.txt"
-                String run = "${outputDir}/trec_top_file-${runName}-${year}.txt"
+                String run = "${outputDir}/trec_top_file-${runName}.txt"
                 int nextQuery = -1;
 
                 try {
@@ -690,7 +688,6 @@ class JTER {
                     csv.append(nullLine)
                     nextQuery++;
                 }
-            }
         }
         // Add stats
         def stats = ["run", "recall", "avgPrecision", "rPrecison", "bpref", "p@5", "p@10", "p@15", "p@20", "p@30", "p@100", "p@200"]
@@ -702,10 +699,12 @@ class JTER {
         int startRow = 2
         int endRow = startRow + topicCounter - 1
         def rows = ["F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P"]
-        for (int x = 0; x < runList.size(); x++) {
+        // size the new runList contains both: the names of the runs and the year we are dividing
+        // the runList with the qrelsList to get the actual number of runs.
+        for (int x = 0; x < runList.size().div(qrelsList.size()); x++) {
             startRow = 2 + x * topicCounter
             endRow = startRow + topicCounter - 1
-            csv.append "=B${startRow};"
+            csv.append "=B${startRow};" // name of the run
             rows.each { row ->
                 csv.append "=MITTELWERT(${row}${startRow}:${row}${endRow});"
             }
