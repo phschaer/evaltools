@@ -200,7 +200,8 @@ class JTER {
         // Fill up the kendalMap and the topics list
         def kendallMap = [:]
         def topics = [] as Set // unique topic numbers
-        
+        def runNames = []
+		
         runs.each {run ->
             // extract all documents and their ranking per run and year
             // Watch out: we have to lowercase all run names because of
@@ -208,23 +209,27 @@ class JTER {
             // of the runs in the top_files.
             def trecTopFile = new File(outputDir, "trec_top_file-${run}.txt")
             trecTopFile.splitEachLine(" ") {topic, runNum, docid, ranking, score, runType ->
-                def tempMap = kendallMap[("${topic}_${runType}")] ?: [:]
-                topics.add(topic)
+                def tempMap = kendallMap[("${topic}_${runType}")] ?: [:]                
+				topics.add(topic)
+				runNames.add(runType)					  
                 tempMap[(docid)] = ranking.toInteger() + 1    // Rank 0 is Rank 1... R wants it this way
                 kendallMap[("${topic}_${runType}")] = tempMap // Map in Map
             }
         }
         log.debug "topics: $topics"
+		log.debug "clearRunNames: $clearRunNames"
         log.debug "kendallMap: $kendallMap"
 
+		def clearRunNames = runNames.unique()
+		
         def computedKendallRuns = []
-        runs.eachWithIndex {String runx, int i ->
-            runs.eachWithIndex {String runy, int j ->
-                // since we want to iterate over all runs and compare each with each other, we have to check this here
+        clearRunNames.eachWithIndex {String runx, int i ->
+            clearRunNames.eachWithIndex {String runy, int j ->
+                // since we want to iterate over all clearRunNames and compare each with each other, we have to check this here
                 if (!(computedKendallRuns.contains("${runx}${runy}") || computedKendallRuns.contains("${runy}${runx}")) && runx != runy) {
                     topics.each {String topic ->
-                        def mapX = kendallMap[("${topic}_${runs.getAt(i)}")] ?: [:]
-                        def mapY = kendallMap[("${topic}_${runs.getAt(j)}")] ?: [:]
+                        def mapX = kendallMap[("${topic}_${clearRunNames.getAt(i)}")] ?: [:]
+                        def mapY = kendallMap[("${topic}_${clearRunNames.getAt(j)}")] ?: [:]
                         int sizeX = mapX.size() ?: 0
                         int sizeY = mapY.size() ?: 0
                         def listX = []
@@ -261,9 +266,9 @@ class JTER {
                         // print the results and write the csv (casting lists x and y to arrays)
                         // make sure that Kendall can't be computed for very small lists (<3)
                         if (listX.size() < 3 || listY.size() < 3) {
-                            log.error "Topic $topic [${runs.getAt(i)}|${runs.getAt(j)}] has less than 3 entries - Can't compute Kendall's Tau."
+                            log.error "Topic $topic [${clearRunNames.getAt(i)}|${clearRunNames.getAt(j)}] has less than 3 entries - Can't compute Kendall's Tau."
                             //Format: "topic;run1;run2;size1;size2;overlapAbs;overlapPerc;tau;pvalue\n"
-                            csv.append "$topic;${runs.getAt(i)};${runs.getAt(j)};${sizeX};${sizeY};"
+                            csv.append "$topic;${clearRunNames.getAt(i)};${clearRunNames.getAt(j)};${sizeX};${sizeY};"
                             csv.append "${overlapAbs};"
                             csv.append "${NumberFormat.getInstance().format(overlapPer)};;" // no kendall tau and pval
                             csv.append "\n"
@@ -273,11 +278,11 @@ class JTER {
                             def kendall = getKendallsTau(x, y)
                             float tau = kendall.tau
                             float pval = kendall.pvalue
-                            log.debug "Topic $topic [${runs.getAt(i)}|${runs.getAt(j)}] got a Kendall's Tau of ${tau} with a p-value of ${pval}"
-                            log.debug "Topic $topic [${runs.getAt(i)}|${runs.getAt(j)}] got an overlap count of ${overlapAbs}/${listX.size()} which equals $overlapPer"
+                            log.debug "Topic $topic [${clearRunNames.getAt(i)}|${clearRunNames.getAt(j)}] got a Kendall's Tau of ${tau} with a p-value of ${pval}"
+                            log.debug "Topic $topic [${clearRunNames.getAt(i)}|${clearRunNames.getAt(j)}] got an overlap count of ${overlapAbs}/${listX.size()} which equals $overlapPer"
 
                             //Format: "topic;run1;run2;size1;size2;overlapAbs;overlapPerc;tau;pvalue\n"
-                            csv.append "$topic;${runs.getAt(i)};${runs.getAt(j)};${sizeX};${sizeY};"
+                            csv.append "$topic;${clearRunNames.getAt(i)};${clearRunNames.getAt(j)};${sizeX};${sizeY};"
                             csv.append "${overlapAbs};"
                             csv.append "${NumberFormat.getInstance().format(overlapPer)};"
                             csv.append "${NumberFormat.getInstance().format(tau)};"
